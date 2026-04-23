@@ -106,7 +106,7 @@ def compose(result: RetrievalResult) -> GuardedAnswer:
         }
         lexical_chunks = [
             c for c in strong_chunks
-            if any(tok in c.text.lower() for tok in query_tokens)
+            if query_tokens & set(re.findall(r"[a-zA-Z]{4,}", c.text.lower()))
         ]
         if lexical_chunks:
             top = lexical_chunks[0]

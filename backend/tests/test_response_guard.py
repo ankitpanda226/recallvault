@@ -201,3 +201,12 @@ def test_abstain_when_no_fact_and_no_qualifying_chunk():
         chunks=[_chunk(text="color", similarity=0.2)],
     ))
     assert ans.mode == "abstain"
+
+
+def test_abstain_substring_false_match_does_not_trigger_cautious():
+    """'rely' must NOT match inside 'rarely' — word-boundary check required."""
+    ans = compose(_result(
+        query="rely on tools",
+        chunks=[_chunk(text="he rarely uses the tool", similarity=0.8)],
+    ))
+    assert ans.mode == "abstain"
