@@ -102,6 +102,15 @@ cd ../frontend
 npm install
 ```
 
+### Dev dependencies (tests only)
+
+```bash
+cd backend
+pip install -r requirements-dev.txt
+```
+
+`requirements-dev.txt` contains `pytest` and `pytest-cov`. It is separate from `requirements.txt` and not needed to run the application.
+
 ---
 
 ## Running
@@ -157,6 +166,21 @@ All settings are read from environment variables prefixed `RV_`:
 | `RV_CAUTIOUS_SEMANTIC_MIN` | `0.45` | Minimum similarity score to attempt a `cautious` answer |
 | `RV_LLM_EXTRACTION` | `false` | Enable LLM-based fact extraction (off by default) |
 | `RV_CONFLICT_STRATEGY` | `newer_explicit_wins` | How conflicting facts are resolved |
+
+---
+
+## Running the unit tests
+
+```bash
+cd backend
+pip install -r requirements-dev.txt   # once
+pytest tests/ -v
+pytest tests/ --cov=app/services      # with coverage
+```
+
+92 tests covering `response_guard`, `conflict_resolver`, `ingest_service`,
+`retrieval_service`, `fact_extractor`, and `verifier`. No network access or
+model downloads required — embedding calls are mocked.
 
 ---
 
