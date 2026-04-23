@@ -19,6 +19,24 @@ Within 0.4 pp of MemPalace's published **96.6% R@5** on [LongMemEval LME-S](http
 
 Full methodology, per-category breakdown, and failure analysis: [evaluation/longmemeval/](evaluation/longmemeval/)
 
+### Abstention benchmark
+
+Measures how reliably the guard refuses to answer when no relevant memory exists.
+LongMemEval does not test this — a system that always answers would score 100% on LongMemEval.
+
+| Category | Cases | Accuracy |
+|---|---|---|
+| empty_memory | 10 | 100.0% |
+| unrelated_memory | 15 | 93.3% |
+| partial_memory | 10 | 100.0% |
+| adversarial_similarity | 5 | 100.0% |
+| **Overall** | **40** | **97.5%** |
+
+0 false-positive `verified` (the critical failure mode — guard claiming confidence without evidence).
+1 false-positive `cautious` in `unrelated_memory` (substring lexical match edge case — "rely" inside "rarely").
+
+See [evaluation/abstention/](evaluation/abstention/) for cases, methodology, and known limitations.
+
 ---
 
 ## How it works
