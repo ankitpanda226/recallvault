@@ -72,6 +72,17 @@ class Settings:
         default_factory=lambda: _env("CONFLICT_STRATEGY", "newer_explicit_wins")
     )
 
+    # Chunking mode
+    chunk_mode: str = field(
+        default_factory=lambda: _env("CHUNK_MODE", "per_turn")
+    )  # "per_turn" | "per_session" | "sliding_window"
+    chunk_window_size: int = field(
+        default_factory=lambda: _env_int("CHUNK_WINDOW_SIZE", 3)
+    )
+    chunk_overlap: int = field(
+        default_factory=lambda: _env_int("CHUNK_OVERLAP", 1)
+    )
+
     @property
     def data_root(self) -> Path:
         return self.storage_root / "data"

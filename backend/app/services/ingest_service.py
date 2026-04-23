@@ -13,6 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.core.config import settings
 from app.core.logging import get_logger
 from app.db.models import MemoryChunk
 from app.db.session import project_session
@@ -53,6 +54,7 @@ def ingest(
     text: str,
     speaker: str = "user",
     tags: list[str] | None = None,
+    session_id: str | None = None,
 ) -> IngestReport:
     text = normalize(text)
     report = IngestReport(project_id=project_id)
@@ -62,6 +64,11 @@ def ingest(
     pieces = chunk_text(text)
     now = utcnow()
 
+    # Merge session_id into tags without mutating the caller's list.
+    effective_tags: list[str] = list(tags or [])
+    if session_id and session_id not in effective_tags:
+        effective_tags = [session_id] + effective_tags
+
     with project_session(project_id) as session:
         for piece in pieces:
             chunk_id = new_id("c")
@@ -70,7 +77,7 @@ def ingest(
                 project_id=project_id,
                 speaker=speaker,
                 raw_text=piece,
-                tags_json=tags or [],
+                tags_json=effective_tags,
                 created_at=now,
             )
             session.add(row)
@@ -137,3 +144,74 @@ def ingest(
                 ))
 
     return report
+
+
+def ingest_session(
+    project_id: str,
+    session_id: str,
+    turns: list[tuple[str, str]],  # list of (role, content)
+    extra_tags: list[str] | None = None,
+) -> IngestReport:
+    """Ingest a multi-turn session respecting settings.chunk_mode.
+
+    per_turn:        one chunk per turn (default, matches pre-existing behavior)
+    per_session:     all turns joined into one chunk; fact extraction on combined text
+    sliding_window:  overlapping windows of chunk_window_size turns with chunk_overlap
+    """
+    mode = settings.chunk_mode
+    tags = [session_id] + (extra_tags or [])
+    report = IngestReport(project_id=project_id)
+
+    if mode == "per_session":
+        lines = [
+            f"{role}: {content.strip()}"
+            for role, content in turns
+            if content.strip()
+        ]
+        if not lines:
+            return report
+        combined = "\n".join(lines)
+        # Run as "user" speaker so fact extraction fires on the combined text.
+        sub = ingest(project_id, combined, speaker="user", tags=tags)
+        _merge_report(report, sub)
+
+    elif mode == "sliding_window":
+        window = settings.chunk_window_size
+        overlap = settings.chunk_overlap
+        step = max(1, window - overlap)
+        i = 0
+        while i < len(turns):
+            window_turns = turns[i : i + window]
+            lines = [
+                f"{role}: {content.strip()}"
+                for role, content in window_turns
+                if content.strip()
+            ]
+            if lines:
+                sub = ingest(
+                    project_id, "\n".join(lines),
+                    speaker="user", tags=tags,
+                )
+                _merge_report(report, sub)
+            if i + window >= len(turns):
+                break
+            i += step
+
+    else:  # per_turn (default)
+        for role, content in turns:
+            content = content.strip()
+            if not content:
+                continue
+            speaker = "user" if role == "user" else "assistant"
+            sub = ingest(project_id, content, speaker=speaker, tags=tags)
+            _merge_report(report, sub)
+
+    return report
+
+
+def _merge_report(dest: IngestReport, src: IngestReport) -> None:
+    dest.chunk_ids.extend(src.chunk_ids)
+    dest.candidates += src.candidates
+    dest.accepted += src.accepted
+    dest.rejected += src.rejected
+    dest.facts.extend(src.facts)

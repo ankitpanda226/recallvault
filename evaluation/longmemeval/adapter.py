@@ -1,11 +1,11 @@
 """RecallVault adapter for a single LongMemEval question.
 
-Caller (run.py) is responsible for setting RV_STORAGE_ROOT (and optionally
-RV_EMBEDDING_MODEL) before importing this module, so that Settings picks up
-the right values.
+Caller (run.py) is responsible for setting RV_STORAGE_ROOT,
+RV_EMBEDDING_MODEL, and RV_CHUNK_MODE (+ window/overlap vars) before
+importing this module, so that Settings picks up the right values.
 
 Public API:
-    run_question(entry, window=1, overlap=0) -> QuestionResult
+    run_question(entry) -> QuestionResult
 """
 from __future__ import annotations
 
@@ -13,7 +13,6 @@ import gc
 import hashlib
 import shutil
 from dataclasses import dataclass, field
-from typing import Generator
 
 
 @dataclass
@@ -31,39 +30,16 @@ def _project_id(question_id: str) -> str:
     return "lme_" + hashlib.md5(question_id.encode()).hexdigest()[:12]
 
 
-def _windowed_chunks(
-    turns: list[dict], window: int, overlap: int
-) -> Generator[str, None, None]:
-    """Yield text chunks from a session's turns using a sliding window.
+def run_question(entry: dict) -> QuestionResult:
+    """Ingest one LongMemEval entry into a fresh project and retrieve top-5.
 
-    Each chunk is N consecutive turns joined as "role: content" lines.
-    The window advances by (window - overlap) turns each step.
-    A session with fewer turns than the window produces one chunk.
+    Chunking strategy is controlled entirely by settings.chunk_mode
+    (RV_CHUNK_MODE env var). The caller sets the env var before importing;
+    ingest_session() reads settings at call time.
     """
-    if not turns:
-        return
-    step = max(1, window - overlap)
-    i = 0
-    while i < len(turns):
-        chunk_turns = turns[i : i + window]
-        lines = [
-            f"{t.get('role', 'user')}: {t.get('content', '').strip()}"
-            for t in chunk_turns
-            if t.get("content", "").strip()
-        ]
-        if lines:
-            yield "\n".join(lines)
-        if i + window >= len(turns):
-            break
-        i += step
-
-
-def run_question(entry: dict, window: int = 1, overlap: int = 0) -> QuestionResult:
-    """Ingest one LongMemEval entry into a fresh project and retrieve top-5."""
-    # Import here so caller can set RV_STORAGE_ROOT before any app module loads.
     from app.core.config import settings
     from app.db.models import MemoryChunk, Project
-    from app.db.session import project_session, registry_session
+    from app.db.session import drop_project, project_session, registry_session
     from app.services import embedding_service, ingest_service, retrieval_service
     from app.utils.time import utcnow
 
@@ -72,7 +48,6 @@ def run_question(entry: dict, window: int = 1, overlap: int = 0) -> QuestionResu
     question: str = entry["question"]
     gold_session_ids: list[str] = entry["answer_session_ids"]
 
-    # haystack_session_ids[i] is the session ID for haystack_sessions[i]
     haystack_session_ids: list[str] = entry["haystack_session_ids"]
     haystack_sessions: list[list[dict]] = entry["haystack_sessions"]
 
@@ -89,28 +64,17 @@ def run_question(entry: dict, window: int = 1, overlap: int = 0) -> QuestionResu
         pass
 
     try:
-        # --- Ingest all sessions ---
-        for session_id, turns in zip(haystack_session_ids, haystack_sessions):
-            if window <= 1:
-                # Default: one chunk per turn.
-                for turn in turns:
-                    role = turn.get("role", "user")
-                    content = turn.get("content", "").strip()
-                    if not content:
-                        continue
-                    speaker = "user" if role == "user" else "assistant"
-                    ingest_service.ingest(
-                        project_id, content, speaker=speaker, tags=[session_id],
-                    )
-            else:
-                # Sliding-window: N consecutive turns per chunk, step = window - overlap.
-                # All windows share the session's tag for session-ID recovery.
-                # Speaker is always "user" so fact extraction isn't skipped; for
-                # retrieval benchmarking the extraction output doesn't affect scoring.
-                for chunk_text in _windowed_chunks(turns, window, overlap):
-                    ingest_service.ingest(
-                        project_id, chunk_text, speaker="user", tags=[session_id],
-                    )
+        # --- Ingest all sessions via ingest_session() ---
+        for session_id, turns_raw in zip(haystack_session_ids, haystack_sessions):
+            turns = [
+                (t.get("role", "user"), t.get("content", ""))
+                for t in turns_raw
+            ]
+            ingest_service.ingest_session(
+                project_id=project_id,
+                session_id=session_id,
+                turns=turns,
+            )
 
         # --- Retrieve top-5 ---
         result = retrieval_service.retrieve(project_id, question, top_k=5)
@@ -129,7 +93,6 @@ def run_question(entry: dict, window: int = 1, overlap: int = 0) -> QuestionResu
                     .all()
                 )
                 seen: set[str] = set()
-                # Preserve retrieval order for the session list.
                 chunk_to_sessions: dict[str, list[str]] = {
                     r.chunk_id: r.tags_json for r in rows
                 }
@@ -151,10 +114,8 @@ def run_question(entry: dict, window: int = 1, overlap: int = 0) -> QuestionResu
         )
 
     finally:
-        # --- Cleanup: release engine, client, then delete data directory ---
-        from app.db.session import drop_project
         project_dir = settings.project_dir(project_id)
-        drop_project(project_id)              # closes SQLAlchemy engine
-        embedding_service._client_for.cache_clear()  # releases ChromaDB client
+        drop_project(project_id)
+        embedding_service._client_for.cache_clear()
         gc.collect()
         shutil.rmtree(project_dir, ignore_errors=True)

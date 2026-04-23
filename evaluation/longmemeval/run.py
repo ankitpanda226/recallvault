@@ -2,9 +2,10 @@
 
 Usage (from repo root):
     python evaluation/longmemeval/run.py --limit 25
-    python evaluation/longmemeval/run.py --stratified 10              # 10/category = 60 total
-    python evaluation/longmemeval/run.py --window 3 --overlap 1       # sliding-window chunks
-    python evaluation/longmemeval/run.py --embedder bge-large         # swap embedding model
+    python evaluation/longmemeval/run.py --stratified 10
+    python evaluation/longmemeval/run.py --chunk-mode sliding_window --window 3 --overlap 1
+    python evaluation/longmemeval/run.py --chunk-mode per_session --embedder bge-large
+    python evaluation/longmemeval/run.py --embedder bge-large
     python evaluation/longmemeval/run.py                              # full 500-question run
 """
 from __future__ import annotations
@@ -27,8 +28,6 @@ DEFAULT_DATA = LONGMEMEVAL_DIR / "data" / "longmemeval_s_cleaned.json"
 DEFAULT_OUT_DIR = LONGMEMEVAL_DIR / "results"
 
 # ── Storage root: set BEFORE any app module is imported ─────────────────────
-# Use a temp dir so benchmark projects don't pollute the main storage tree.
-# Adapter.py cleans up per-project dirs; the temp dir itself is removed at end.
 _BENCH_STORAGE = tempfile.mkdtemp(prefix="rv_lme_")
 os.environ["RV_STORAGE_ROOT"] = _BENCH_STORAGE
 
@@ -48,8 +47,16 @@ EMBEDDER_MODELS = {
     "bge-large": "BAAI/bge-large-en-v1.5",
 }
 
+CHUNK_MODES = ["per_turn", "per_session", "sliding_window"]
 
-def _report(results: list[dict], embedder: str = "minilm", window: int = 1, overlap: int = 0) -> None:
+
+def _report(
+    results: list[dict],
+    embedder: str = "minilm",
+    chunk_mode: str = "per_turn",
+    window: int = 1,
+    overlap: int = 0,
+) -> None:
     total = len(results)
     hits = sum(r["hit"] for r in results)
 
@@ -67,7 +74,10 @@ def _report(results: list[dict], embedder: str = "minilm", window: int = 1, over
     ]
 
     model_name = EMBEDDER_MODELS.get(embedder, embedder)
-    chunk_desc = f"window={window},overlap={overlap}" if window > 1 else "per-turn"
+    if chunk_mode == "sliding_window":
+        chunk_desc = f"sliding_window(w={window},o={overlap})"
+    else:
+        chunk_desc = chunk_mode
     header = f"LongMemEval R@5 — RecallVault ({model_name}, {chunk_desc})"
     w = 38
     print()
@@ -104,10 +114,13 @@ def main() -> None:
                     help="Max number of questions to evaluate (default: all 500)")
     ap.add_argument("--stratified", type=int, default=None, metavar="N",
                     help="Pick the first N questions per category (6 categories × N total)")
-    ap.add_argument("--window", type=int, default=1, metavar="N",
-                    help="Turns per sliding-window chunk (default: 1 = per-turn)")
-    ap.add_argument("--overlap", type=int, default=0, metavar="K",
-                    help="Turn overlap between consecutive windows (default: 0)")
+    ap.add_argument("--chunk-mode", default="per_turn", choices=CHUNK_MODES,
+                    dest="chunk_mode",
+                    help="Chunking strategy: per_turn (default), per_session, sliding_window")
+    ap.add_argument("--window", type=int, default=3, metavar="N",
+                    help="Turns per sliding-window chunk (only used with --chunk-mode sliding_window, default: 3)")
+    ap.add_argument("--overlap", type=int, default=1, metavar="K",
+                    help="Turn overlap between windows (only used with --chunk-mode sliding_window, default: 1)")
     ap.add_argument("--embedder", default="minilm",
                     choices=list(EMBEDDER_MODELS),
                     help="Embedding model: minilm (default) or bge-large")
@@ -119,12 +132,18 @@ def main() -> None:
 
     if args.limit is not None and args.stratified is not None:
         ap.error("--limit and --stratified are mutually exclusive")
-    if args.overlap >= args.window:
+    if args.chunk_mode == "sliding_window" and args.overlap >= args.window:
         ap.error("--overlap must be less than --window")
+    if args.chunk_mode == "per_session" and (args.window != 3 or args.overlap != 1):
+        # --window/--overlap are ignored for per_session; warn but don't error
+        pass
 
-    # Set embedding model env var BEFORE any app module is imported.
-    # Settings() reads RV_EMBEDDING_MODEL on first instantiation inside run_question().
+    # Set env vars BEFORE any app module is imported.
     os.environ["RV_EMBEDDING_MODEL"] = EMBEDDER_MODELS[args.embedder]
+    os.environ["RV_CHUNK_MODE"] = args.chunk_mode
+    if args.chunk_mode == "sliding_window":
+        os.environ["RV_CHUNK_WINDOW_SIZE"] = str(args.window)
+        os.environ["RV_CHUNK_OVERLAP"] = str(args.overlap)
 
     data = _load_data(Path(args.data))
     if args.stratified is not None:
@@ -132,19 +151,19 @@ def main() -> None:
     elif args.limit is not None:
         data = data[: args.limit]
 
-    # Build a config suffix for the output filename so runs are self-describing.
-    suffix_parts = []
-    if args.window > 1:
+    # Build a self-describing config suffix for the output filename.
+    suffix_parts = [args.chunk_mode.replace("_", "")]
+    if args.chunk_mode == "sliding_window":
         suffix_parts.append(f"w{args.window}o{args.overlap}")
     if args.embedder != "minilm":
         suffix_parts.append(args.embedder.replace("-", ""))
-    config_suffix = ("_" + "_".join(suffix_parts)) if suffix_parts else ""
+    config_suffix = "_" + "_".join(suffix_parts)
 
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
     out_path = Path(args.out) if args.out else DEFAULT_OUT_DIR / f"run_{ts}{config_suffix}.jsonl"
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Import adapter after both env vars are set.
+    # Import adapter after all env vars are set.
     from adapter import run_question  # noqa: E402
 
     try:
@@ -157,7 +176,7 @@ def main() -> None:
 
     with open(out_path, "w") as out_f:
         for entry in iterator:
-            qr = run_question(entry, window=args.window, overlap=args.overlap)
+            qr = run_question(entry)
             row = {
                 "question_id": qr.question_id,
                 "question_type": qr.question_type,
@@ -170,7 +189,13 @@ def main() -> None:
             all_results.append(row)
 
     print(f"\nResults written to: {out_path}")
-    _report(all_results, embedder=args.embedder, window=args.window, overlap=args.overlap)
+    _report(
+        all_results,
+        embedder=args.embedder,
+        chunk_mode=args.chunk_mode,
+        window=args.window,
+        overlap=args.overlap,
+    )
 
 
 if __name__ == "__main__":

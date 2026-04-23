@@ -22,7 +22,7 @@ def _ingest(project_id, text, speaker="user", tags=None):
 def _no_embedding(monkeypatch):
     """Prevent any real ChromaDB / model calls for every test in this module."""
     import app.services.ingest_service as svc
-    monkeypatch.setattr(svc, "embedding_service", MagicMock(add_chunk=lambda **kw: None))
+    monkeypatch.setattr(svc, "embedding_service", MagicMock(add_chunk=lambda **_: None))
 
 
 # ── Chunk storage ─────────────────────────────────────────────────────────────
@@ -138,3 +138,78 @@ def test_second_ingest_same_fact_noop(test_project):
     report2 = _ingest(test_project, "My name is Alice.")
     if report2.facts:
         assert report2.facts[0].action == "no_op"
+
+
+# ── ingest_session() tests ────────────────────────────────────────────────────
+
+_TURNS = [
+    ("user", "Hello, how are you?"),
+    ("assistant", "I'm doing well, thanks!"),
+    ("user", "My name is Alice and I prefer backend roles."),
+    ("assistant", "Nice to meet you, Alice!"),
+    ("user", "I graduate in May 2027."),
+]
+
+
+def test_ingest_session_per_turn_mode(test_project, monkeypatch):
+    import app.services.ingest_service as svc
+    monkeypatch.setattr(svc, "embedding_service", MagicMock(add_chunk=lambda **_: None))
+    monkeypatch.setattr(svc.settings, "chunk_mode", "per_turn")
+
+    from app.services.ingest_service import ingest_session
+    report = ingest_session(test_project, "sess_A", _TURNS)
+    # 3 user turns + 2 assistant turns = 5 non-empty turns → 5 chunks
+    assert len(report.chunk_ids) == 5
+
+
+def test_ingest_session_per_session_mode(test_project, monkeypatch):
+    import app.services.ingest_service as svc
+    monkeypatch.setattr(svc, "embedding_service", MagicMock(add_chunk=lambda **_: None))
+    monkeypatch.setattr(svc.settings, "chunk_mode", "per_session")
+
+    from app.services.ingest_service import ingest_session
+    report = ingest_session(test_project, "sess_B", _TURNS)
+    # All turns joined into one chunk
+    assert len(report.chunk_ids) == 1
+
+
+def test_ingest_session_sliding_window_mode(test_project, monkeypatch):
+    import app.services.ingest_service as svc
+    monkeypatch.setattr(svc, "embedding_service", MagicMock(add_chunk=lambda **_: None))
+    monkeypatch.setattr(svc.settings, "chunk_mode", "sliding_window")
+    monkeypatch.setattr(svc.settings, "chunk_window_size", 3)
+    monkeypatch.setattr(svc.settings, "chunk_overlap", 1)
+
+    from app.services.ingest_service import ingest_session
+    # 5 turns, window=3, overlap=1 → step=2 → windows at [0,3), [2,5) → 2 chunks
+    report = ingest_session(test_project, "sess_C", _TURNS)
+    assert len(report.chunk_ids) == 2
+
+
+def test_ingest_session_preserves_session_id_tag(test_project, monkeypatch):
+    import app.services.ingest_service as svc
+    monkeypatch.setattr(svc, "embedding_service", MagicMock(add_chunk=lambda **_: None))
+    monkeypatch.setattr(svc.settings, "chunk_mode", "per_turn")
+
+    from app.services.ingest_service import ingest_session
+    from app.db.models import MemoryChunk
+
+    sid = "sess_tag_test"
+    report = ingest_session(test_project, sid, _TURNS)
+    with project_session(test_project) as s:
+        rows = (
+            s.query(MemoryChunk)
+            .filter(MemoryChunk.chunk_id.in_(report.chunk_ids))
+            .all()
+        )
+    assert all(sid in row.tags_json for row in rows)
+
+
+def test_ingest_session_backward_compatible(test_project, monkeypatch):
+    """ingest() without session_id behaves identically to before."""
+    import app.services.ingest_service as svc
+    monkeypatch.setattr(svc, "embedding_service", MagicMock(add_chunk=lambda **_: None))
+
+    report = _ingest(test_project, "My name is Alice.")
+    assert len(report.chunk_ids) == 1
+    assert report.accepted >= 1
