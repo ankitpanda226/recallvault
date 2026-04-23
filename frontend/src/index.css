@@ -1,0 +1,18 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #root { height: 100%; }
+
+::selection { background: #d4ff3a; color: #0b0d10; }
+
+/* Subtle grid texture for the background */
+body {
+  background-image:
+    radial-gradient(rgba(255,255,255,0.03) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.scroll-thin::-webkit-scrollbar { width: 8px; height: 8px; }
+.scroll-thin::-webkit-scrollbar-thumb { background: #1d222b; border-radius: 4px; }
+.scroll-thin::-webkit-scrollbar-thumb:hover { background: #2a313d; }

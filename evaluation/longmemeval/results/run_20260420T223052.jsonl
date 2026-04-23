@@ -1,0 +1,25 @@
+{"question_id": "e47becba", "question_type": "single-session-user", "gold_session_ids": ["answer_280352e9"], "retrieved_session_ids": ["sharegpt_QZMeA7V_17", "answer_280352e9"], "hit": true}
+{"question_id": "118b2229", "question_type": "single-session-user", "gold_session_ids": ["answer_40a90d51"], "retrieved_session_ids": ["answer_40a90d51", "7d8b5834_1"], "hit": true}
+{"question_id": "51a45a95", "question_type": "single-session-user", "gold_session_ids": ["answer_d61669c7"], "retrieved_session_ids": ["answer_d61669c7"], "hit": true}
+{"question_id": "58bf7951", "question_type": "single-session-user", "gold_session_ids": ["answer_355c48bb"], "retrieved_session_ids": ["answer_355c48bb"], "hit": true}
+{"question_id": "1e043500", "question_type": "single-session-user", "gold_session_ids": ["answer_3e012175"], "retrieved_session_ids": ["answer_3e012175"], "hit": true}
+{"question_id": "c5e8278d", "question_type": "single-session-user", "gold_session_ids": ["answer_f6168136"], "retrieved_session_ids": ["answer_f6168136"], "hit": true}
+{"question_id": "6ade9755", "question_type": "single-session-user", "gold_session_ids": ["answer_9398da02"], "retrieved_session_ids": ["answer_9398da02"], "hit": true}
+{"question_id": "6f9b354f", "question_type": "single-session-user", "gold_session_ids": ["answer_feb5200f"], "retrieved_session_ids": ["answer_feb5200f", "0c0f2449_2", "ultrachat_549317"], "hit": true}
+{"question_id": "58ef2f1c", "question_type": "single-session-user", "gold_session_ids": ["answer_59547700"], "retrieved_session_ids": ["answer_59547700"], "hit": true}
+{"question_id": "f8c5f88b", "question_type": "single-session-user", "gold_session_ids": ["answer_c3567066"], "retrieved_session_ids": ["answer_c3567066"], "hit": true}
+{"question_id": "5d3d2817", "question_type": "single-session-user", "gold_session_ids": ["answer_235eb6fb"], "retrieved_session_ids": ["sharegpt_BKl952A_23", "ultrachat_371333"], "hit": false}
+{"question_id": "7527f7e2", "question_type": "single-session-user", "gold_session_ids": ["answer_7cb94507"], "retrieved_session_ids": ["answer_7cb94507", "eae6a7c0"], "hit": true}
+{"question_id": "c960da58", "question_type": "single-session-user", "gold_session_ids": ["answer_e05e4612"], "retrieved_session_ids": ["answer_e05e4612"], "hit": true}
+{"question_id": "3b6f954b", "question_type": "single-session-user", "gold_session_ids": ["answer_94030872"], "retrieved_session_ids": ["answer_94030872", "ultrachat_64326", "ultrachat_294369"], "hit": true}
+{"question_id": "726462e0", "question_type": "single-session-user", "gold_session_ids": ["answer_f38f679b"], "retrieved_session_ids": ["5b83c26e_1", "cdd9704d_1", "741c6781_1"], "hit": false}
+{"question_id": "94f70d80", "question_type": "single-session-user", "gold_session_ids": ["answer_c63c0458"], "retrieved_session_ids": ["answer_c63c0458"], "hit": true}
+{"question_id": "66f24dbb", "question_type": "single-session-user", "gold_session_ids": ["answer_fea2e4d3"], "retrieved_session_ids": ["answer_fea2e4d3"], "hit": true}
+{"question_id": "ad7109d1", "question_type": "single-session-user", "gold_session_ids": ["answer_679840f8"], "retrieved_session_ids": ["answer_679840f8", "ultrachat_434062"], "hit": true}
+{"question_id": "af8d2e46", "question_type": "single-session-user", "gold_session_ids": ["answer_82a04f59"], "retrieved_session_ids": ["answer_82a04f59"], "hit": true}
+{"question_id": "dccbc061", "question_type": "single-session-user", "gold_session_ids": ["answer_8f276838"], "retrieved_session_ids": ["answer_8f276838"], "hit": true}
+{"question_id": "c8c3f81d", "question_type": "single-session-user", "gold_session_ids": ["answer_761acef8"], "retrieved_session_ids": ["answer_761acef8"], "hit": true}
+{"question_id": "8ebdbe50", "question_type": "single-session-user", "gold_session_ids": ["answer_8ad8a34f"], "retrieved_session_ids": ["answer_8ad8a34f", "90f16f14_2"], "hit": true}
+{"question_id": "6b168ec8", "question_type": "single-session-user", "gold_session_ids": ["answer_e623ae87"], "retrieved_session_ids": ["answer_e623ae87"], "hit": true}
+{"question_id": "75499fd8", "question_type": "single-session-user", "gold_session_ids": ["answer_723bf11f"], "retrieved_session_ids": ["answer_723bf11f"], "hit": true}
+{"question_id": "21436231", "question_type": "single-session-user", "gold_session_ids": ["answer_1e6d4567"], "retrieved_session_ids": ["answer_1e6d4567"], "hit": true}

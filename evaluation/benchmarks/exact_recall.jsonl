@@ -1,0 +1,5 @@
+{"setup": ["My name is Alex."], "query": "What is my name?", "expect_mode": "verified", "expect_key": "user_name", "expect_value": "Alex"}
+{"setup": ["I prefer concise answers."], "query": "How do I want my responses?", "expect_mode": "verified", "expect_key": "response_style_preference"}
+{"setup": ["My expected graduation is December 2026."], "query": "When do I finish school?", "expect_mode": "verified", "expect_key": "graduation_date"}
+{"setup": ["I prefer backend engineer roles."], "query": "What roles am I targeting?", "expect_mode": "verified", "expect_key": "preferred_roles"}
+{"setup": ["We chose Postgres for durable storage."], "query": "What did we choose for storage?", "expect_mode": "verified", "expect_key": "architecture_decision"}

@@ -1,0 +1,4 @@
+{"setup": [], "query": "What is my favorite color?", "expect_mode": "abstain"}
+{"setup": [], "query": "Where do I live?", "expect_mode": "abstain"}
+{"setup": ["I prefer concise answers."], "query": "What is my graduation date?", "expect_mode": "abstain"}
+{"setup": ["My name is Alex."], "query": "What roles am I targeting?", "expect_mode": "abstain"}

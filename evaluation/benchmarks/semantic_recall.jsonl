@@ -1,0 +1,2 @@
+{"setup": ["The root cause is a stale cache in the worker pool."], "query": "Tell me about cache problems.", "expect_mode_in": ["cautious", "verified"]}
+{"setup": ["We ran into a deadlock when two workers tried to update the same row simultaneously."], "query": "Any concurrency issues I've hit?", "expect_mode_in": ["cautious", "abstain"]}

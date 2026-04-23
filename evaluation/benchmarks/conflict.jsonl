@@ -1,0 +1,3 @@
+{"setup": ["My expected graduation is December 2026.", "Actually my graduation is May 2027."], "query": "When do I graduate?", "expect_mode": "verified", "expect_key": "graduation_date", "expect_value_contains": "2027"}
+{"setup": ["I prefer concise answers.", "I prefer detailed answers now."], "query": "How do I want my responses?", "expect_mode": "verified", "expect_key": "response_style_preference", "expect_value_contains": "detailed"}
+{"setup": ["We chose Postgres for durable storage.", "We chose SQLite for durable storage."], "query": "What did we choose for storage?", "expect_mode": "verified", "expect_key": "architecture_decision", "expect_value_contains": "SQLite"}

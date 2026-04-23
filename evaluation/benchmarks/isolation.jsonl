@@ -1,0 +1,2 @@
+{"project_a_setup": ["My name is Alex."], "project_b_setup": [], "query_in_b": "What is my name?", "expect_mode_in_b": "abstain"}
+{"project_a_setup": ["My expected graduation is December 2026."], "project_b_setup": ["I prefer concise answers."], "query_in_b": "When do I graduate?", "expect_mode_in_b": "abstain"}

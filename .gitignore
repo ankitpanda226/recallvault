@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# RecallVault runtime data — everything under storage/ is generated
+storage/data/
+storage/registry.db
+storage/raw_archives/
+storage/vector_indexes/
+storage/exports/
+
+# Editors
+.vscode/
+.idea/
+.DS_Store
+
+# LongMemEval dataset (277 MB — re-download via evaluation/longmemeval/download.py)
+evaluation/longmemeval/data/
+
+# Env
+.env
+.env.local
