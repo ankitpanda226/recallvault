@@ -182,7 +182,10 @@ All settings are read from environment variables prefixed `RV_`:
 | `RV_RECENCY_HALF_LIFE_DAYS` | `30` | Half-life for recency decay in scoring |
 | `RV_VERIFIED_CONFIDENCE_MIN` | `0.75` | Minimum confidence to trust a fact as `verified` |
 | `RV_CAUTIOUS_SEMANTIC_MIN` | `0.45` | Minimum similarity score to attempt a `cautious` answer |
-| `RV_LLM_EXTRACTION` | `false` | Enable LLM-based fact extraction (off by default) |
+| `RV_LLM_EXTRACTION` | `false` | Enable LLM-based fact extraction via Ollama (off by default) |
+| `RV_LLM_MODEL` | `llama3.1:8b` | Ollama model for fact extraction |
+| `RV_LLM_BASE_URL` | `http://localhost:11434` | Ollama API base URL |
+| `RV_LLM_TIMEOUT` | `30` | Seconds before Ollama request times out |
 | `RV_CONFLICT_STRATEGY` | `newer_explicit_wins` | How conflicting facts are resolved |
 
 ---
@@ -196,9 +199,51 @@ pytest tests/ -v
 pytest tests/ --cov=app/services      # with coverage
 ```
 
-92 tests covering `response_guard`, `conflict_resolver`, `ingest_service`,
+99 tests covering `response_guard`, `conflict_resolver`, `ingest_service`,
 `retrieval_service`, `fact_extractor`, and `verifier`. No network access or
 model downloads required — embedding calls are mocked.
+
+---
+
+## Optional: LLM-based fact extraction
+
+By default RecallVault uses rule-based fact extraction (no external dependencies).
+You can enable an Ollama-backed LLM extractor as a fallback for sentences the rules don't recognise.
+
+**The LLM path only runs when:**
+1. `RV_LLM_EXTRACTION=1` is set, **and**
+2. the rule extractor returns zero candidates for that chunk.
+
+If Ollama is not running or times out, the system falls back silently to returning no facts — rules-only behaviour is unchanged.
+
+### Setup
+
+```bash
+# Install Ollama (macOS)
+brew install ollama
+
+# Pull the default model (~4.7 GB)
+ollama pull llama3.1:8b
+
+# Start the Ollama server (runs in background)
+ollama serve
+```
+
+### Enable
+
+```bash
+RV_LLM_EXTRACTION=1 uvicorn app.main:app --reload
+```
+
+Or set it permanently in your shell environment. To use a different model:
+
+```bash
+RV_LLM_MODEL=llama3.2:3b RV_LLM_EXTRACTION=1 uvicorn app.main:app --reload
+```
+
+### Zero hard dependency
+
+Tests never contact Ollama — all LLM calls are mocked. The application starts and operates normally whether or not Ollama is installed.
 
 ---
 

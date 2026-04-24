@@ -16,11 +16,17 @@ Output format (what the verifier consumes):
 """
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, asdict
 from typing import Any
 
+import httpx
+
 from app.core.config import settings
+from app.core.logging import get_logger
+
+log = get_logger(__name__)
 
 
 @dataclass
@@ -80,6 +86,21 @@ _PATTERNS: list[tuple[re.Pattern[str], str, str, str, float]] = [
      "company_targets", "list", "explicit_user_statement", 0.85),
 ]
 
+_LLM_SYSTEM_PROMPT = """\
+You extract personal facts from user messages.
+Return a JSON object with a "facts" key containing a list of facts.
+Each fact must have exactly these fields:
+  key        — snake_case identifier (e.g. user_name, preferred_language, graduation_date)
+  value      — extracted value (string, number, list, or boolean)
+  value_type — one of: string, list, number, bool
+  confidence — float 0.0–1.0
+  source_type — one of: explicit_user_statement, inferred, decision
+  reason     — one-sentence explanation
+
+Only extract clear, factual personal information, preferences, or decisions.
+If no facts are present, return {"facts": []}.
+Do not invent facts not supported by the text."""
+
 
 def _split_list(val: str) -> list[str]:
     parts = re.split(r"\s*(?:,|/|&| and )\s*", val.strip())
@@ -111,21 +132,81 @@ def extract_rules(text: str) -> list[CandidateFact]:
 
 
 def extract_llm(text: str) -> list[CandidateFact]:
-    """LLM-based extraction. Placeholder that returns [] unless implemented.
+    """LLM-based extraction via Ollama. Returns [] on any failure."""
+    payload = {
+        "model": settings.llm_model,
+        "format": "json",
+        "stream": False,
+        "messages": [
+            {"role": "system", "content": _LLM_SYSTEM_PROMPT},
+            {"role": "user", "content": text},
+        ],
+    }
 
-    To implement: call an LLM with a strict JSON schema prompt that asks
-    for a list of {key, value, value_type, confidence, source_type, reason}
-    objects, then map to CandidateFact. Kept out of the default path so the
-    demo runs with no API key.
-    """
-    return []
+    try:
+        response = httpx.post(
+            f"{settings.llm_base_url}/api/chat",
+            json=payload,
+            timeout=settings.llm_timeout,
+        )
+        content = response.json()["message"]["content"]
+        parsed = json.loads(content)
+    except httpx.ConnectError as e:
+        log.warning("Ollama not reachable (is it running?): %s", e)
+        return []
+    except httpx.TimeoutException as e:
+        log.warning("Ollama request timed out after %.0fs: %s", settings.llm_timeout, e)
+        return []
+    except (json.JSONDecodeError, KeyError, ValueError) as e:
+        log.warning("LLM extraction parse error: %s", e)
+        return []
+
+    if isinstance(parsed, dict):
+        facts_raw = parsed.get("facts", [])
+        if not isinstance(facts_raw, list):
+            facts_raw = [facts_raw]
+    elif isinstance(parsed, list):
+        facts_raw = parsed
+    else:
+        return []
+
+    out: list[CandidateFact] = []
+    for item in facts_raw:
+        if not isinstance(item, dict):
+            continue
+        key = item.get("key", "")
+        value = item.get("value")
+        if not key or value is None:
+            continue
+        vtype = item.get("value_type", "string")
+        if vtype not in ("string", "list", "number", "bool"):
+            vtype = "string"
+        confidence = float(item.get("confidence", 0.7))
+        confidence = max(0.0, min(1.0, confidence))
+        source_type = item.get("source_type", "inferred")
+        if source_type not in ("explicit_user_statement", "inferred", "decision"):
+            source_type = "inferred"
+        reason = item.get("reason", f"LLM extracted '{key}'")
+        out.append(CandidateFact(
+            key=key,
+            value=value,
+            value_type=vtype,
+            confidence=confidence,
+            source_type=source_type,
+            reason=reason,
+        ))
+    return out
 
 
 def extract(text: str) -> list[CandidateFact]:
-    """Main extractor entry point. Dedupes by (key, str(value))."""
+    """Main extractor entry point. Dedupes by (key, str(value)).
+
+    Rules run first. LLM runs only when rules return no candidates
+    AND settings.llm_extraction is enabled (fallback, not parallel).
+    """
     candidates = extract_rules(text)
-    if settings.llm_extraction:
-        candidates.extend(extract_llm(text))
+    if not candidates and settings.llm_extraction:
+        candidates = extract_llm(text)
 
     seen: set[tuple[str, str]] = set()
     deduped: list[CandidateFact] = []

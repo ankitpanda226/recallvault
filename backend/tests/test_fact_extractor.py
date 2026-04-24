@@ -4,6 +4,8 @@ Pure function tests — no DB, no network.
 """
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from app.services.fact_extractor import CandidateFact, extract, extract_rules
@@ -123,3 +125,98 @@ def test_extract_fact_has_required_fields():
     assert 0.0 <= fact.confidence <= 1.0
     assert fact.source_type
     assert fact.reason
+
+
+# ── LLM extraction — fallback behaviour ──────────────────────────────────────
+
+class TestLLMExtraction:
+    def test_llm_not_called_when_flag_disabled(self, monkeypatch):
+        import app.services.fact_extractor as fe
+        from app.core.config import settings
+        monkeypatch.setattr(settings, "llm_extraction", False)
+
+        def must_not_call(text):
+            raise AssertionError("extract_llm must not be called when flag is off")
+
+        monkeypatch.setattr(fe, "extract_llm", must_not_call)
+        facts = fe.extract("My name is Alice.")
+        assert any(f.key == "user_name" for f in facts)
+
+    def test_llm_not_called_when_rules_hit(self, monkeypatch):
+        import app.services.fact_extractor as fe
+        from app.core.config import settings
+        monkeypatch.setattr(settings, "llm_extraction", True)
+
+        def must_not_call(text):
+            raise AssertionError("extract_llm must not be called when rules produce candidates")
+
+        monkeypatch.setattr(fe, "extract_llm", must_not_call)
+        facts = fe.extract("My name is Alice.")
+        assert any(f.key == "user_name" for f in facts)
+
+    def test_llm_called_when_rules_miss(self, monkeypatch):
+        import app.services.fact_extractor as fe
+        from app.core.config import settings
+        from app.services.fact_extractor import CandidateFact
+        monkeypatch.setattr(settings, "llm_extraction", True)
+
+        fake = CandidateFact(
+            key="user_hobby", value="hiking", value_type="string",
+            confidence=0.85, source_type="explicit_user_statement",
+            reason="user stated hobby",
+        )
+        monkeypatch.setattr(fe, "extract_llm", lambda t: [fake])
+        facts = fe.extract("the weather is nice today")
+        assert any(f.key == "user_hobby" for f in facts)
+
+    def test_llm_graceful_when_ollama_unreachable(self, monkeypatch):
+        import httpx
+        from app.core.config import settings
+        monkeypatch.setattr(settings, "llm_extraction", True)
+
+        def raise_connect_error(*_a, **_kw):
+            raise httpx.ConnectError("Connection refused")
+
+        monkeypatch.setattr(httpx, "post", raise_connect_error)
+
+        from app.services.fact_extractor import extract_llm
+        assert extract_llm("I love hiking.") == []
+
+    def test_llm_graceful_on_malformed_json(self, monkeypatch):
+        import httpx
+        from unittest.mock import MagicMock
+        from app.core.config import settings
+        monkeypatch.setattr(settings, "llm_extraction", True)
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"message": {"content": "not valid json {"}}
+        monkeypatch.setattr(httpx, "post", lambda *a, **kw: mock_resp)
+
+        from app.services.fact_extractor import extract_llm
+        assert extract_llm("I love hiking.") == []
+
+    def test_llm_parses_valid_response(self, monkeypatch):
+        import httpx
+        from unittest.mock import MagicMock
+        from app.core.config import settings
+        from app.services.fact_extractor import CandidateFact, extract_llm
+        monkeypatch.setattr(settings, "llm_extraction", True)
+
+        payload = {"facts": [{
+            "key": "user_hobby",
+            "value": "hiking",
+            "value_type": "string",
+            "confidence": 0.85,
+            "source_type": "explicit_user_statement",
+            "reason": "user stated hobby",
+        }]}
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"message": {"content": json.dumps(payload)}}
+        monkeypatch.setattr(httpx, "post", lambda *a, **kw: mock_resp)
+
+        result = extract_llm("I love hiking.")
+        assert len(result) == 1
+        assert isinstance(result[0], CandidateFact)
+        assert result[0].key == "user_hobby"
+        assert result[0].value == "hiking"
+        assert result[0].confidence == 0.85

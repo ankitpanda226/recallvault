@@ -83,6 +83,17 @@ class Settings:
         default_factory=lambda: _env_int("CHUNK_OVERLAP", 1)
     )
 
+    # LLM fact extraction (Ollama)
+    llm_model: str = field(
+        default_factory=lambda: _env("LLM_MODEL", "llama3.1:8b")
+    )
+    llm_base_url: str = field(
+        default_factory=lambda: _env("LLM_BASE_URL", "http://localhost:11434")
+    )
+    llm_timeout: float = field(
+        default_factory=lambda: _env_float("LLM_TIMEOUT", 30.0)
+    )
+
     @property
     def data_root(self) -> Path:
         return self.storage_root / "data"
