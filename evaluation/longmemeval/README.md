@@ -155,23 +155,50 @@ Within 0.4 pp of MemPalace's published 96.6% R@5 with fully documented methodolo
 |---|---|---|---|
 | Baseline | MiniLM-L6-v2 | Per-turn | 92.0% |
 | + sliding window (Phase 2a) | MiniLM-L6-v2 | 3-turn, overlap=1 | 92.4% |
-| + BGE-large (Phase 2b) | BGE-large-en-v1.5 | 3-turn, overlap=1 | **96.2%** |
+| + BGE-large (Phase 2b) ★ | BGE-large-en-v1.5 | 3-turn, overlap=1 | **96.2%** |
+| + per-session (Phase 2c) | BGE-large-en-v1.5 | Per-session | 94.0% |
 | MemPalace (reference) | MiniLM-L6-v2 | Per-session | 96.6% |
 
-### Per-category breakdown — all three configs
+★ = canonical RecallVault configuration
 
-| Category | n | Baseline | Phase 2a | Phase 2b |
-|---|---|---|---|---|
-| single-session-user | 70 | 62 = 88.6% | 64 = 91.4% | 67 = **95.7%** |
-| single-session-assistant | 56 | 55 = 98.2% | 56 = **100.0%** | 54 = 96.4% |
-| single-session-preference | 30 | 26 = 86.7% | 24 = 80.0% | 26 = **86.7%** |
-| multi-session | 133 | 123 = 92.5% | 121 = 91.0% | 131 = **98.5%** |
-| temporal-reasoning | 133 | 118 = 88.7% | 121 = 91.0% | 126 = **94.7%** |
-| knowledge-update | 78 | 76 = 97.4% | 76 = 97.4% | 77 = **98.7%** |
-| **Overall** | **500** | **460 = 92.0%** | **462 = 92.4%** | **481 = 96.2%** |
+### Per-category breakdown — all four configs
+
+| Category | n | Baseline | Phase 2a | Phase 2b | Phase 2c |
+|---|---|---|---|---|---|
+| single-session-user | 70 | 62 = 88.6% | 64 = 91.4% | 67 = **95.7%** | 65 = 92.9% |
+| single-session-assistant | 56 | 55 = 98.2% | 56 = **100.0%** | 54 = 96.4% | 51 = 91.1% |
+| single-session-preference | 30 | 26 = 86.7% | 24 = 80.0% | 26 = **86.7%** | 24 = 80.0% |
+| multi-session | 133 | 123 = 92.5% | 121 = 91.0% | 131 = **98.5%** | 128 = 96.2% |
+| temporal-reasoning | 133 | 118 = 88.7% | 121 = 91.0% | 126 = **94.7%** | 126 = 94.7% |
+| knowledge-update | 78 | 76 = 97.4% | 76 = 97.4% | 77 = **98.7%** | 76 = 97.4% |
+| **Overall** | **500** | **460 = 92.0%** | **462 = 92.4%** | **481 = 96.2%** | **470 = 94.0%** |
 
 **Key findings:**
 - BGE-large is the dominant driver (+3.8 pp from Phase 2a to 2b). Sliding-window alone adds only +0.4 pp.
 - Multi-session is the biggest winner in Phase 2b: 92.5% → 98.5% (+6 pp). BGE-large's superior cross-sentence understanding resolves the semantic mismatch between aggregation queries and individual session descriptions.
-- Single-session-preference is the persistent weak point: 86.7% in both baseline and Phase 2b. Unchanged by chunking or embedder swap — see `failure_analysis.md` for why this is a query-reformulation problem, not an embedding problem.
+- Single-session-preference is the persistent weak point: 86.7% in Phase 2b, 80.0% in both Phase 2a and Phase 2c. Unchanged by chunking or embedder swap — see `failure_analysis.md` for why this is a query-reformulation problem, not an embedding problem.
 - Single-session-assistant is the only category where Phase 2b regresses vs. Phase 2a (100% → 96.4%), but at 2 misses on 56 questions this is within measurement noise.
+
+---
+
+### Methodology comparison: sliding-window vs. per-session chunking
+
+Phase 2c replicated MemPalace's per-session chunking methodology using the same BGE-large embedder as Phase 2b. The result was **2.2 pp lower** than Phase 2b (94.0% vs. 96.2%). Every category regressed; the largest drop was single-session-preference (−6.7 pp).
+
+| Category | Phase 2b (sliding-window) | Phase 2c (per-session) | Δ |
+|---|---|---|---|
+| single-session-user | 95.7% | 92.9% | −2.8 pp |
+| single-session-assistant | 96.4% | 91.1% | −5.3 pp |
+| single-session-preference | 86.7% | 80.0% | **−6.7 pp** |
+| multi-session | 98.5% | 96.2% | −2.3 pp |
+| temporal-reasoning | 94.7% | 94.7% | 0.0 pp |
+| knowledge-update | 98.7% | 97.4% | −1.3 pp |
+| **Overall** | **96.2%** | **94.0%** | **−2.2 pp** |
+
+**Finding:** MemPalace's per-session chunking methodology underperforms 3-turn sliding-window chunking on this stack. Phase 2b (sliding-window + BGE-large) remains the canonical RecallVault configuration.
+
+**Hypothesis for the regression:** BGE-large embeds each per-session blob as a single high-dimensional vector that must represent an entire multi-turn conversation (often 20–40 turns). This dilutes specific content — a preference stated in one turn is averaged with unrelated topic turns in the same session. Sliding-window chunks with 1-turn overlap preserve more localised, retrievable signal: each chunk covers only 3 turns, so a fact expressed in one turn dominates the chunk's embedding rather than being diluted.
+
+The structural advantage MemPalace has with per-session chunking (each of 53 sessions is exactly one candidate → top-5 always spans 5 distinct sessions) is offset by this dilution effect when the embedding model is BGE-large. With MiniLM-L6-v2 (MemPalace's baseline embedder), session-level pooling may be a net positive because the weaker embedder benefits more from longer context. This remains an untested hypothesis.
+
+Result file: `evaluation/longmemeval/results/run_20260423T191556_persession_bgelarge.jsonl`

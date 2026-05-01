@@ -14,8 +14,11 @@ Within 0.4 pp of MemPalace's published **96.6% R@5** on [LongMemEval LME-S](http
 |---|---|---|---|
 | Baseline | MiniLM-L6-v2 | Per-turn | 92.0% |
 | + sliding window (Phase 2a) | MiniLM-L6-v2 | 3-turn, overlap=1 | 92.4% |
-| + BGE-large (Phase 2b) | BGE-large-en-v1.5 | 3-turn, overlap=1 | **96.2%** |
+| + BGE-large (Phase 2b) ★ | BGE-large-en-v1.5 | 3-turn, overlap=1 | **96.2%** |
+| + per-session (Phase 2c) | BGE-large-en-v1.5 | Per-session | 94.0% |
 | MemPalace (reference) | MiniLM-L6-v2 | Per-session | 96.6% |
+
+★ = canonical config. Phase 2c tested MemPalace's per-session methodology and scored 2.2 pp lower than Phase 2b — sliding-window chunking outperforms per-session with BGE-large on this stack.
 
 Full methodology, per-category breakdown, and failure analysis: [evaluation/longmemeval/](evaluation/longmemeval/)
 

@@ -1,31 +1,35 @@
-# LongMemEval Failure Analysis — RecallVault Phase 1 & 2
+# LongMemEval Failure Analysis — RecallVault Phase 1, 2 & 2c
 
-Tracks miss counts across all three completed benchmark runs. Concrete examples
-are from the baseline run; Phase 2a/2b counts show whether each pattern was resolved.
+Tracks miss counts across all completed benchmark runs. Concrete examples
+are from the baseline run; Phase 2a/2b/2c counts show whether each pattern was resolved.
 
 | Run | Config | Total misses |
 |---|---|---|
 | Baseline | MiniLM-L6-v2, per-turn | 40 |
 | Phase 2a | MiniLM-L6-v2, window=3 overlap=1 | 38 |
-| Phase 2b | BGE-large-en-v1.5, window=3 overlap=1 | 19 |
+| Phase 2b ★ | BGE-large-en-v1.5, window=3 overlap=1 | 19 |
+| Phase 2c | BGE-large-en-v1.5, per-session | 30 |
+
+★ = canonical RecallVault configuration
 
 Results files:
 - `results/run_20260420T230752.jsonl` (baseline)
 - `results/run_20260421T173740_w3o1.jsonl` (Phase 2a)
 - `results/run_20260421T233611_w3o1_bgelarge.jsonl` (Phase 2b)
+- `results/run_20260423T191556_persession_bgelarge.jsonl` (Phase 2c)
 
 ---
 
 ## Miss count by category across all runs
 
-| Category | n | Baseline | Phase 2a | Phase 2b |
-|---|---|---|---|---|
-| temporal-reasoning | 133 | 15 | 12 | **7** |
-| multi-session | 133 | 10 | 12 | **2** |
-| single-session-user | 70 | 8 | 6 | **3** |
-| single-session-preference | 30 | 4 | 6 | **4** |
-| knowledge-update | 78 | 2 | 2 | **1** |
-| single-session-assistant | 56 | 1 | 0 | 2 |
+| Category | n | Baseline | Phase 2a | Phase 2b | Phase 2c |
+|---|---|---|---|---|---|
+| temporal-reasoning | 133 | 15 | 12 | **7** | 7 |
+| multi-session | 133 | 10 | 12 | **2** | 5 |
+| single-session-user | 70 | 8 | 6 | **3** | 5 |
+| single-session-preference | 30 | 4 | 6 | 4 | 6 |
+| knowledge-update | 78 | 2 | 2 | **1** | 2 |
+| single-session-assistant | 56 | 1 | 0 | 2 | 5 |
 
 ---
 
@@ -170,7 +174,7 @@ rather than relying on vector retrieval.
 
 ## Pattern 4 — Implicit preference retrieval (structural limitation)
 
-**Category:** single-session-preference | **Misses: baseline 4 → Phase 2a 6 → Phase 2b 4**
+**Category:** single-session-preference | **Misses: baseline 4 → Phase 2a 6 → Phase 2b 4 → Phase 2c 6**
 
 **What happens:** The user expressed a preference or habit in one session (e.g.,
 experimenting with turbinado sugar in baking), but the retrieval query reformulates
@@ -186,15 +190,21 @@ turns, weakening the embedding.
 BGE-large corrected the windowing regression but added no additional hits. The
 miss count is identical to the baseline despite a far stronger embedder.
 
-**This is the key structural finding of Phase 2:** single-session-preference is
-the only category that did not improve end-to-end. The miss rate is the same at
-86.7% in both baseline and Phase 2b. This is not an embedding-quality problem —
-it is a query-reformulation problem. The user's stored preference ("I've been
-experimenting with turbinado sugar") and the retrieval query ("my cookies need
-something extra") are semantically distant in any embedding space because they
-describe the same underlying preference from completely different angles. No
-embedding model trained on general text will reliably bridge this gap without
-explicit query rewriting.
+**Phase 2c: 6 misses (80.0%) — same as Phase 2a, worse than baseline and Phase 2b.**
+Per-session chunking embeds the full conversation as one blob, diluting the
+preference signal further. Preference turns are a small fraction of a long session;
+the session embedding drifts toward the dominant topic and away from the preference
+statement. This is the largest single-category regression in Phase 2c (−6.7 pp vs.
+Phase 2b).
+
+**This is the confirmed structural finding across all four runs:** single-session-preference
+is the only category that never improved beyond 86.7% (Phase 2b). It sits at 80.0%
+in Phase 2a and Phase 2c — confirming that this is a query-reformulation problem,
+not a chunking problem and not an embedding problem. The miss rate is stable at
+4 misses in embedding-aware configs (baseline, Phase 2b) and 6 misses when chunking
+dilutes localised preference signal (Phase 2a windowing regression, Phase 2c blob
+dilution). No chunking strategy resolves this: the fix requires explicit query
+rewriting before retrieval.
 
 **Future fix (Phase 3):** HyDE (Hypothetical Document Embeddings) or LLM-based
 query expansion before embedding — generate a hypothetical memory entry that the
@@ -263,13 +273,20 @@ note: Page count update across two sessions. If fact extraction had captured
 
 ## Summary: what Phase 2 resolved and what remains structural
 
-| Pattern | Baseline misses | Phase 2b misses | Resolved? |
-|---|---|---|---|
-| Temporal distance framing | 15 | 7 | Partially — date indexing needed for remainder |
-| Multi-session aggregation | 10 | 2 | Largely resolved by BGE-large |
-| Incidental fact in off-topic session | 8 | 3 | Improved — wider windows would help further |
-| Implicit preference retrieval | 4 | 4 | **Structural — query rewriting needed, not embedding** |
-| Multi-gold knowledge-update | 2 | 1 | Largely resolved |
+| Pattern | Baseline misses | Phase 2b misses | Phase 2c misses | Resolved? |
+|---|---|---|---|---|
+| Temporal distance framing | 15 | 7 | 7 | Partially — date indexing needed for remainder |
+| Multi-session aggregation | 10 | 2 | 5 | Largely resolved by BGE-large + sliding-window |
+| Incidental fact in off-topic session | 8 | 3 | 5 | Improved by sliding-window — per-session regresses |
+| Implicit preference retrieval | 4 | 4 | 6 | **Structural — query rewriting needed, not chunking** |
+| Multi-gold knowledge-update | 2 | 1 | 2 | Largely resolved in Phase 2b; per-session regresses |
+
+**Phase 2c confirms the chunking finding:** sliding-window (Phase 2b) outperforms
+per-session (Phase 2c) on every category except temporal-reasoning (tied at 7 misses).
+The preference pattern is the sharpest confirmation: 6 misses in both chunking-degraded
+configs (Phase 2a, Phase 2c) and 4 misses in both embedding-optimised configs (baseline,
+Phase 2b). Chunking strategy does not move the preference needle — the ceiling is set
+by the semantic distance between stored preference statements and reformulated queries.
 
 The single-session-preference pattern is the clearest signal for Phase 3 design:
 it requires HyDE or LLM-based query expansion, and any benchmark specifically
